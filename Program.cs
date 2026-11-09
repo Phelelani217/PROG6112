@@ -1,86 +1,27 @@
- using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Raceway.Data;
-using Raceway.Models;
-using Raceway.Models.Interface;
+using RaceDay.Mvc.Services;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString));
-builder.Services.AddDatabaseDeveloperPageExceptionFilter();
-
-builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
-    .AddRoles<IdentityRole>()
-    .AddEntityFrameworkStores<ApplicationDbContext>();
-
-builder.Services.AddScoped<IProfileImageService, ProfileImageService>();
-
 builder.Services.AddControllersWithViews();
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(o =>
+{
+    o.IdleTimeout = TimeSpan.FromMinutes(30);
+    o.Cookie.HttpOnly = true;
+    o.Cookie.IsEssential = true;
+});
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient<ApiService>(c =>
+{
+    c.BaseAddress = new Uri(builder.Configuration["Api:BaseUrl"] ?? "http://localhost:5000/");
+});
 
 var app = builder.Build();
-
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetService<ApplicationDbContext>();
-    db.Database.Migrate();
-
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    var roles = new[] { "Admin", "Organiser", "Participant" };
-
-    foreach(var role in roles)
-    {
-        if(!await roleManager.RoleExistsAsync(role))
-        {
-            await roleManager.CreateAsync(new IdentityRole(role));
-        }
-    }
-
-    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-
-    String email = "admin@icloud.com";
-    String password = "Admin1234@";
-
-    if(await userManager.FindByEmailAsync(email) == null)
-    {
-        var user = new ApplicationUser();
-
-        user.UserName = email;
-        user.Email = email;
-        user.EmailConfirmed = true;
-
-        await userManager.CreateAsync(user, password);
-        await userManager.AddToRoleAsync(user, "Admin");
-    }
-}
-
-
-
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseMigrationsEndPoint();
-}
-else
-{
+if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
-}
 
-app.UseHttpsRedirection();
 app.UseStaticFiles();
-app.UseStaticFiles();
-
 app.UseRouting();
-
+app.UseSession();
 app.UseAuthorization();
-
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
-app.MapRazorPages();
-
+app.MapControllerRoute("default", "{controller=Home}/{action=Index}/{id?}");
 app.Run();
